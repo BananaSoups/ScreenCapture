@@ -9,4 +9,6 @@ public sealed class ApplicationSettings
     public bool MinimizeToTray { get; set; } = true;
 
     public bool CopyCaptureToClipboard { get; set; } = true;
+
+    public HotkeySettings Hotkeys { get; set; } = new();
 }

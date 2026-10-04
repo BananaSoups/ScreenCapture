@@ -28,7 +28,8 @@ public partial class App : Avalonia.Application
         AvaloniaXamlLoader.Load(this);
     }
 
-    public override void OnFrameworkInitializationCompleted()
+
+    public override async void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime
             is IClassicDesktopStyleApplicationLifetime desktop)
@@ -49,6 +50,13 @@ public partial class App : Avalonia.Application
                 _mainWindow;
 
             BuildApplicationServices();
+
+            var settingsService =
+                _serviceProvider!
+                    .GetRequiredService<
+                        ScreenCapture.Application.Settings.IApplicationSettingsService>();
+
+            await settingsService.LoadAsync();
 
             _mainWindow.Show();
         }
@@ -81,6 +89,10 @@ public partial class App : Avalonia.Application
         services.AddSingleton<
             IClipboardService,
             AvaloniaClipboardService>();
+
+        services.AddSingleton<
+            ScreenCapture.Application.Settings.IApplicationSettingsService,
+            ScreenCapture.Application.Settings.ApplicationSettingsService>();
 
         var platformRegistrar =
             CreatePlatformServiceRegistrar();
@@ -221,4 +233,5 @@ public partial class App : Avalonia.Application
             desktop.Shutdown();
         }
     }
+
 }
