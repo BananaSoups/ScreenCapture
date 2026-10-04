@@ -21,6 +21,7 @@ public partial class App : Avalonia.Application
     private bool _isExiting;
 
     private RegionCaptureWorkflow? _regionCaptureWorkflow;
+    private ScreenCaptureWorkflow? _screenCaptureWorkflow;
 
     public override void Initialize()
     {
@@ -70,6 +71,11 @@ public partial class App : Avalonia.Application
 
         var storageService =
             new CaptureStorageService();
+
+        _screenCaptureWorkflow =
+            new ScreenCaptureWorkflow(
+                screenCaptureService,
+                storageService);
 
         _regionCaptureWorkflow =
             new RegionCaptureWorkflow(
@@ -127,9 +133,19 @@ public partial class App : Avalonia.Application
         object? sender,
         EventArgs e)
     {
-        // Leave this temporarily as-is until we
-        // refactor the normal screenshot workflow too.
-        await Task.CompletedTask;
+        if (_screenCaptureWorkflow is null)
+            return;
+
+        try
+        {
+            await _screenCaptureWorkflow
+                .CaptureAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                $"Full screen capture failed: {ex}");
+        }
     }
 
     private void OpenScreenCapture_Click(

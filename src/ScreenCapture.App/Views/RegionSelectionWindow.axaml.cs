@@ -1,11 +1,13 @@
 using System;
-using System.IO;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media.Imaging;
-using ScreenCapture.Core.Imaging;
+using Avalonia.Platform;
 using ScreenCapture.Core.Models;
+using System.Threading;
 
 namespace ScreenCapture.App.Views;
 
@@ -15,6 +17,9 @@ public partial class RegionSelectionWindow : Window
 
     private Point? _startPoint;
     private bool _isSelecting;
+
+    private TaskCompletionSource<CaptureRegion?>?
+        _selectionCompletion;
 
     public CaptureRegion? SelectedRegion { get; private set; }
 
@@ -35,13 +40,45 @@ public partial class RegionSelectionWindow : Window
         PixelRect virtualDesktopBounds)
         : this()
     {
+        SetCapture(
+            desktopCapture,
+            virtualDesktopBounds);
+    }
+
+    public Task<CaptureRegion?> WaitForSelectionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        _selectionCompletion =
+            new TaskCompletionSource<CaptureRegion?>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (cancellationToken.CanBeCanceled)
+        {
+            cancellationToken.Register(() =>
+            {
+                CompleteSelection(null);
+            });
+        }
+
+        return _selectionCompletion.Task;
+    }
+
+    public void SetCapture(
+        CaptureResult desktopCapture,
+        PixelRect virtualDesktopBounds)
+    {
         _desktopCapture = desktopCapture;
 
         Position = virtualDesktopBounds.Position;
         Width = virtualDesktopBounds.Width;
         Height = virtualDesktopBounds.Height;
 
-        ShowActivated = true;
+        SelectedRegion = null;
+        _startPoint = null;
+        _isSelecting = false;
+
+        SelectionBorder.IsVisible = false;
+        SizeText.IsVisible = false;
 
         LoadDesktopImage();
     }
@@ -51,16 +88,47 @@ public partial class RegionSelectionWindow : Window
         if (_desktopCapture is null)
             return;
 
-        var pngData = PngEncoder.EncodeRgba(
-            _desktopCapture.PixelData,
-            _desktopCapture.Width,
-            _desktopCapture.Height);
+        var bitmap = new WriteableBitmap(
+            new PixelSize(
+                _desktopCapture.Width,
+                _desktopCapture.Height),
+            new Vector(96, 96),
+            PixelFormat.Rgba8888,
+            AlphaFormat.Opaque);
 
-        using var stream =
-            new MemoryStream(pngData);
+        using (var framebuffer = bitmap.Lock())
+        {
+            var source =
+                _desktopCapture.PixelData;
 
-        DesktopImage.Source =
-            new Bitmap(stream);
+            var sourceRowBytes =
+                _desktopCapture.Width * 4;
+
+            if (framebuffer.RowBytes == sourceRowBytes)
+            {
+                Marshal.Copy(
+                    source,
+                    0,
+                    framebuffer.Address,
+                    source.Length);
+            }
+            else
+            {
+                for (var y = 0;
+                     y < _desktopCapture.Height;
+                     y++)
+                {
+                    Marshal.Copy(
+                        source,
+                        y * sourceRowBytes,
+                        framebuffer.Address +
+                            y * framebuffer.RowBytes,
+                        sourceRowBytes);
+                }
+            }
+        }
+
+        DesktopImage.Source = bitmap;
     }
 
     private void Canvas_PointerPressed(
@@ -143,7 +211,8 @@ public partial class RegionSelectionWindow : Window
                 (int)Math.Round(width),
                 (int)Math.Round(height));
 
-        Close();
+        CompleteSelection(
+            SelectedRegion);
     }
 
     private void UpdateSelection(
@@ -207,7 +276,21 @@ public partial class RegionSelectionWindow : Window
     private void CancelSelection()
     {
         SelectedRegion = null;
+        _isSelecting = false;
+        _startPoint = null;
 
-        Close();
+        SelectionBorder.IsVisible = false;
+        SizeText.IsVisible = false;
+
+        CompleteSelection(null);
+    }
+
+    private void CompleteSelection(
+        CaptureRegion? region)
+    {
+        Hide();
+
+        _selectionCompletion?
+            .TrySetResult(region);
     }
 }

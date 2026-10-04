@@ -14,6 +14,8 @@ public sealed class AvaloniaRegionSelectionService
 {
     private readonly MainWindow _mainWindow;
 
+    private RegionSelectionWindow? _selectionWindow;
+
     public AvaloniaRegionSelectionService(
         MainWindow mainWindow)
     {
@@ -68,29 +70,23 @@ public sealed class AvaloniaRegionSelectionService
             $"{frozenDesktop.Width}x" +
             $"{frozenDesktop.Height}");
 
-        var selectionWindow =
-            new RegionSelectionWindow(
-                frozenDesktop,
-                virtualDesktopBounds);
+        _selectionWindow ??=
+            new RegionSelectionWindow();
 
-        var closed =
-            new TaskCompletionSource<bool>(
-                TaskCreationOptions
-                    .RunContinuationsAsynchronously);
+        _selectionWindow.SetCapture(
+            frozenDesktop,
+            virtualDesktopBounds);
 
-        selectionWindow.Closed += (_, _) =>
-        {
-            closed.TrySetResult(true);
-        };
+        cancellationToken.ThrowIfCancellationRequested();
 
-        selectionWindow.Show();
+        var selectionTask =
+            _selectionWindow.WaitForSelectionAsync(
+                cancellationToken);
 
-        using var registration =
-            cancellationToken.Register(
-                selectionWindow.Close);
+        _selectionWindow.Show();
+        _selectionWindow.Activate();
+        _selectionWindow.Focus();
 
-        await closed.Task;
-
-        return selectionWindow.SelectedRegion;
+        return await selectionTask;
     }
 }

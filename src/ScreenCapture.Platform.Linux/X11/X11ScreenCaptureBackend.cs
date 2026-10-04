@@ -14,16 +14,22 @@ public sealed class X11ScreenCaptureBackend : ILinuxScreenCaptureBackend
     private static extern int XCloseDisplay(IntPtr display);
 
     [DllImport("libX11.so.6")]
-    private static extern IntPtr XDefaultRootWindow(IntPtr display);
+    private static extern IntPtr XDefaultRootWindow(
+        IntPtr display);
 
     [DllImport("libX11.so.6")]
-    private static extern int XDefaultScreen(IntPtr display);
+    private static extern int XDefaultScreen(
+        IntPtr display);
 
     [DllImport("libX11.so.6")]
-    private static extern int XDisplayWidth(IntPtr display, int screen);
+    private static extern int XDisplayWidth(
+        IntPtr display,
+        int screen);
 
     [DllImport("libX11.so.6")]
-    private static extern int XDisplayHeight(IntPtr display, int screen);
+    private static extern int XDisplayHeight(
+        IntPtr display,
+        int screen);
 
     [DllImport("libX11.so.6")]
     private static extern IntPtr XGetImage(
@@ -37,13 +43,8 @@ public sealed class X11ScreenCaptureBackend : ILinuxScreenCaptureBackend
         int format);
 
     [DllImport("libX11.so.6")]
-    private static extern int XDestroyImage(IntPtr image);
-
-    [DllImport("libX11.so.6")]
-    private static extern IntPtr XGetPixel(
-        IntPtr image,
-        int x,
-        int y);
+    private static extern int XDestroyImage(
+        IntPtr image);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct XImage
@@ -73,15 +74,21 @@ public sealed class X11ScreenCaptureBackend : ILinuxScreenCaptureBackend
         var display = XOpenDisplay(IntPtr.Zero);
 
         if (display == IntPtr.Zero)
+        {
             throw new InvalidOperationException(
                 "Unable to connect to the X11 display.");
+        }
 
         try
         {
-            var screen = XDefaultScreen(display);
+            var screen =
+                XDefaultScreen(display);
 
-            var width = XDisplayWidth(display, screen);
-            var height = XDisplayHeight(display, screen);
+            var width =
+                XDisplayWidth(display, screen);
+
+            var height =
+                XDisplayHeight(display, screen);
 
             return Task.FromResult(
                 Capture(
@@ -104,15 +111,21 @@ public sealed class X11ScreenCaptureBackend : ILinuxScreenCaptureBackend
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (region.Width <= 0 || region.Height <= 0)
+        if (region.Width <= 0 ||
+            region.Height <= 0)
+        {
             throw new ArgumentException(
                 "Capture region must have a positive size.");
+        }
 
-        var display = XOpenDisplay(IntPtr.Zero);
+        var display =
+            XOpenDisplay(IntPtr.Zero);
 
         if (display == IntPtr.Zero)
+        {
             throw new InvalidOperationException(
                 "Unable to connect to the X11 display.");
+        }
 
         try
         {
@@ -139,56 +152,59 @@ public sealed class X11ScreenCaptureBackend : ILinuxScreenCaptureBackend
         int width,
         int height)
     {
-        var imageHandle = XGetImage(
-            display,
-            rootWindow,
-            x,
-            y,
-            (uint)width,
-            (uint)height,
-            ulong.MaxValue,
-            ZPixmap);
+        var imageHandle =
+            XGetImage(
+                display,
+                rootWindow,
+                x,
+                y,
+                (uint)width,
+                (uint)height,
+                ulong.MaxValue,
+                ZPixmap);
 
         if (imageHandle == IntPtr.Zero)
+        {
             throw new InvalidOperationException(
                 "X11 failed to capture the requested screen region.");
+        }
 
         try
         {
-            var image = Marshal.PtrToStructure<XImage>(imageHandle);
+            var image =
+                Marshal.PtrToStructure<XImage>(
+                    imageHandle);
 
-            // Copy the raw X11 image into a managed RGBA buffer.
-            var pixels = new byte[width * height * 4];
-
-            for (var pixelY = 0; pixelY < height; pixelY++)
+            if (image.data == IntPtr.Zero)
             {
-                for (var pixelX = 0; pixelX < width; pixelX++)
-                {
-                    var pixel = unchecked(
-                        (ulong)XGetPixel(
-                            imageHandle,
-                            pixelX,
-                            pixelY).ToInt64());
+                throw new InvalidOperationException(
+                    "X11 returned an image without pixel data.");
+            }
 
-                    var red = ExtractChannel(
-                        pixel,
-                        image.red_mask);
+            var pixels =
+                new byte[width * height * 4];
 
-                    var green = ExtractChannel(
-                        pixel,
-                        image.green_mask);
-
-                    var blue = ExtractChannel(
-                        pixel,
-                        image.blue_mask);
-
-                    var offset = ((pixelY * width) + pixelX) * 4;
-
-                    pixels[offset] = red;
-                    pixels[offset + 1] = green;
-                    pixels[offset + 2] = blue;
-                    pixels[offset + 3] = 255;
-                }
+            // Fast path for the normal 32-bit X11 framebuffer.
+            //
+            // Instead of calling XGetPixel() once per pixel,
+            // copy the entire XImage into managed memory first.
+            if (image.bits_per_pixel == 32)
+            {
+                Copy32BitImage(
+                    image,
+                    width,
+                    height,
+                    pixels);
+            }
+            else
+            {
+                // Fallback for unusual X11 pixel formats.
+                CopyUsingXGetPixel(
+                    imageHandle,
+                    image,
+                    width,
+                    height,
+                    pixels);
             }
 
             return new CaptureResult
@@ -205,6 +221,202 @@ public sealed class X11ScreenCaptureBackend : ILinuxScreenCaptureBackend
         }
     }
 
+    private static void Copy32BitImage(
+        XImage image,
+        int width,
+        int height,
+        byte[] destination)
+    {
+        var sourceSize =
+            image.bytes_per_line * height;
+
+        var source =
+            new byte[sourceSize];
+
+        Marshal.Copy(
+            image.data,
+            source,
+            0,
+            source.Length);
+
+        var redShift =
+            GetMaskShift(image.red_mask);
+
+        var greenShift =
+            GetMaskShift(image.green_mask);
+
+        var blueShift =
+            GetMaskShift(image.blue_mask);
+
+        var redMax =
+            GetMaskValue(image.red_mask, redShift);
+
+        var greenMax =
+            GetMaskValue(image.green_mask, greenShift);
+
+        var blueMax =
+            GetMaskValue(image.blue_mask, blueShift);
+
+        var littleEndian =
+            image.byte_order == 0;
+
+        for (var y = 0; y < height; y++)
+        {
+            var sourceRow =
+                y * image.bytes_per_line;
+
+            var destinationRow =
+                y * width * 4;
+
+            for (var x = 0; x < width; x++)
+            {
+                var sourceOffset =
+                    sourceRow + (x * 4);
+
+                uint pixel;
+
+                if (littleEndian)
+                {
+                    pixel =
+                        (uint)(
+                            source[sourceOffset] |
+                            (source[sourceOffset + 1] << 8) |
+                            (source[sourceOffset + 2] << 16) |
+                            (source[sourceOffset + 3] << 24));
+                }
+                else
+                {
+                    pixel =
+                        (uint)(
+                            (source[sourceOffset] << 24) |
+                            (source[sourceOffset + 1] << 16) |
+                            (source[sourceOffset + 2] << 8) |
+                            source[sourceOffset + 3]);
+                }
+
+                var red =
+                    ScaleChannel(
+                        (pixel & image.red_mask) >>
+                        redShift,
+                        redMax);
+
+                var green =
+                    ScaleChannel(
+                        (pixel & image.green_mask) >>
+                        greenShift,
+                        greenMax);
+
+                var blue =
+                    ScaleChannel(
+                        (pixel & image.blue_mask) >>
+                        blueShift,
+                        blueMax);
+
+                var destinationOffset =
+                    destinationRow + (x * 4);
+
+                destination[destinationOffset] =
+                    red;
+
+                destination[destinationOffset + 1] =
+                    green;
+
+                destination[destinationOffset + 2] =
+                    blue;
+
+                destination[destinationOffset + 3] =
+                    255;
+            }
+        }
+    }
+
+    private static void CopyUsingXGetPixel(
+        IntPtr imageHandle,
+        XImage image,
+        int width,
+        int height,
+        byte[] destination)
+    {
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var pixel =
+                    unchecked(
+                        (ulong)XGetPixel(
+                            imageHandle,
+                            x,
+                            y).ToInt64());
+
+                var red =
+                    ExtractChannel(
+                        pixel,
+                        image.red_mask);
+
+                var green =
+                    ExtractChannel(
+                        pixel,
+                        image.green_mask);
+
+                var blue =
+                    ExtractChannel(
+                        pixel,
+                        image.blue_mask);
+
+                var offset =
+                    ((y * width) + x) * 4;
+
+                destination[offset] =
+                    red;
+
+                destination[offset + 1] =
+                    green;
+
+                destination[offset + 2] =
+                    blue;
+
+                destination[offset + 3] =
+                    255;
+            }
+        }
+    }
+
+    private static int GetMaskShift(
+        ulong mask)
+    {
+        if (mask == 0)
+            return 0;
+
+        var shift = 0;
+
+        while ((mask & 1) == 0)
+        {
+            mask >>= 1;
+            shift++;
+        }
+
+        return shift;
+    }
+
+    private static ulong GetMaskValue(
+        ulong mask,
+        int shift)
+    {
+        return mask >> shift;
+    }
+
+    private static byte ScaleChannel(
+        ulong value,
+        ulong maxValue)
+    {
+        if (maxValue == 0)
+            return 0;
+
+        return (byte)(
+            (value * 255 + maxValue / 2) /
+            maxValue);
+    }
+
     private static byte ExtractChannel(
         ulong pixel,
         ulong mask)
@@ -212,19 +424,23 @@ public sealed class X11ScreenCaptureBackend : ILinuxScreenCaptureBackend
         if (mask == 0)
             return 0;
 
-        var shift = 0;
-        var shiftedMask = mask;
+        var shift =
+            GetMaskShift(mask);
 
-        while ((shiftedMask & 1) == 0)
-        {
-            shiftedMask >>= 1;
-            shift++;
-        }
+        var value =
+            (pixel & mask) >> shift;
 
-        var value = (pixel & mask) >> shift;
+        var maxValue =
+            GetMaskValue(mask, shift);
 
-        var maxValue = shiftedMask;
-
-        return (byte)((value * 255) / maxValue);
+        return ScaleChannel(
+            value,
+            maxValue);
     }
+
+    [DllImport("libX11.so.6")]
+    private static extern IntPtr XGetPixel(
+        IntPtr image,
+        int x,
+        int y);
 }
