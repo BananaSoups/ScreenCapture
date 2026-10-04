@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ScreenCapture.App/ScreenCapture.App.csproj" />
+    <Project Path="src/ScreenCapture.Application/ScreenCapture.Application.csproj" />
+    <Project Path="src/ScreenCapture.Core/ScreenCapture.Core.csproj" />
+    <Project Path="src/ScreenCapture.Platform.Linux/ScreenCapture.Platform.Linux.csproj" />
+    <Project Path="src/ScreenCapture.Platform.Windows/ScreenCapture.Platform.Windows.csproj" />
+    <Project Path="src/ScreenCapture.Platform/ScreenCapture.Platform.csproj" />
+  </Folder>
+</Solution>
