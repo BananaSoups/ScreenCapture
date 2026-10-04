@@ -7,14 +7,19 @@ namespace ScreenCapture.Application.Capture;
 public sealed class ScreenCaptureWorkflow
 {
     private readonly IScreenCaptureService _screenCaptureService;
+    private readonly IClipboardService _clipboardService;
     private readonly CaptureStorageService _storageService;
 
     public ScreenCaptureWorkflow(
         IScreenCaptureService screenCaptureService,
+        IClipboardService clipboardService,
         CaptureStorageService storageService)
     {
         _screenCaptureService =
             screenCaptureService;
+
+        _clipboardService =
+            clipboardService;
 
         _storageService =
             storageService;
@@ -31,6 +36,10 @@ public sealed class ScreenCaptureWorkflow
             await _storageService.SaveAsync(
                 capture,
                 cancellationToken);
+
+        await _clipboardService.SetImageAsync(
+            capture,
+            cancellationToken);
 
         Console.WriteLine(
             $"Full screen capture saved: {path}");
