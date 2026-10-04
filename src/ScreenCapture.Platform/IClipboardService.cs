@@ -1,8 +1,10 @@
+using ScreenCapture.Core.Models;
+
 namespace ScreenCapture.Platform;
 
 public interface IClipboardService
 {
     Task SetImageAsync(
-        byte[] imageData,
+        CaptureResult capture,
         CancellationToken cancellationToken = default);
 }

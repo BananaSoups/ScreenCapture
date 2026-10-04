@@ -1,6 +1,4 @@
 using System;
-using System.Threading.Tasks;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -11,7 +9,8 @@ using ScreenCapture.Application.Capture;
 using ScreenCapture.Application.Storage;
 using ScreenCapture.Platform;
 using ScreenCapture.Platform.Linux;
-using ScreenCapture.Platform.Linux.X11;
+using Microsoft.Extensions.DependencyInjection;
+
 
 namespace ScreenCapture.App;
 
@@ -22,6 +21,8 @@ public partial class App : Avalonia.Application
 
     private RegionCaptureWorkflow? _regionCaptureWorkflow;
     private ScreenCaptureWorkflow? _screenCaptureWorkflow;
+
+    private ServiceProvider? _serviceProvider;
 
     public override void Initialize()
     {
@@ -62,40 +63,58 @@ public partial class App : Avalonia.Application
             throw new InvalidOperationException(
                 "Main window has not been created.");
 
-        var screenCaptureService =
-            CreateScreenCaptureService();
+        var services =
+            new ServiceCollection();
 
-        var regionSelectionService =
-            new AvaloniaRegionSelectionService(
-                _mainWindow);
+        services.AddSingleton(_mainWindow);
 
-        var storageService =
-            new CaptureStorageService();
+        services.AddSingleton<CaptureStorageService>();
+
+        services.AddSingleton<
+            AvaloniaRegionSelectionService>();
+
+        services.AddSingleton<
+            ScreenCapture.Application.UI.IRegionSelectionService>(
+            provider =>
+                provider.GetRequiredService<
+                    AvaloniaRegionSelectionService>());
+
+        var platformRegistrar =
+            CreatePlatformServiceRegistrar();
+
+        platformRegistrar.RegisterServices(
+            services);
+
+        services.AddSingleton<ScreenCaptureWorkflow>();
+        services.AddSingleton<RegionCaptureWorkflow>();
+
+        _serviceProvider =
+            services.BuildServiceProvider();
 
         _screenCaptureWorkflow =
-            new ScreenCaptureWorkflow(
-                screenCaptureService,
-                storageService);
+            _serviceProvider
+                .GetRequiredService<ScreenCaptureWorkflow>();
 
         _regionCaptureWorkflow =
-            new RegionCaptureWorkflow(
-                screenCaptureService,
-                regionSelectionService,
-                storageService);
+            _serviceProvider
+                .GetRequiredService<RegionCaptureWorkflow>();
     }
 
-    private static IScreenCaptureService
-        CreateScreenCaptureService()
+    private static IPlatformServiceRegistrar CreatePlatformServiceRegistrar()
     {
         if (OperatingSystem.IsLinux())
         {
-            return new LinuxScreenCaptureService(
-                new X11ScreenCaptureBackend());
+            return new LinuxPlatformServiceRegistrar();
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException(
+                "Windows platform services are not implemented yet.");
         }
 
         throw new PlatformNotSupportedException(
-            "Screen capture is not implemented " +
-            "for this operating system yet.");
+            "This operating system is not supported.");
     }
 
     private void MainWindow_Closing(
@@ -188,6 +207,9 @@ public partial class App : Avalonia.Application
     private void ExitApplication()
     {
         _isExiting = true;
+
+        _serviceProvider?.Dispose();
+        _serviceProvider = null;
 
         if (ApplicationLifetime
             is IClassicDesktopStyleApplicationLifetime desktop)
