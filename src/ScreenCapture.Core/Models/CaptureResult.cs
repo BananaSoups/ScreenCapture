@@ -2,7 +2,7 @@ namespace ScreenCapture.Core.Models;
 
 public sealed class CaptureResult
 {
-    public required byte[] ImageData { get; init; }
+    public required byte[] PixelData { get; init; }
 
     public required int Width { get; init; }
 

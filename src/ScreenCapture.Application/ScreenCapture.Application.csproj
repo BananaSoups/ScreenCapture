@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ScreenCapture.Core\ScreenCapture.Core.csproj" />
+    <ProjectReference Include="..\ScreenCapture.Platform\ScreenCapture.Platform.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

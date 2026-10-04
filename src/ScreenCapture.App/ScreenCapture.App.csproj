@@ -22,4 +22,11 @@
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ScreenCapture.Core\ScreenCapture.Core.csproj" />
+    <ProjectReference Include="..\ScreenCapture.Application\ScreenCapture.Application.csproj" />
+    <ProjectReference Include="..\ScreenCapture.Platform\ScreenCapture.Platform.csproj" />
+    <ProjectReference Include="..\ScreenCapture.Platform.Linux\ScreenCapture.Platform.Linux.csproj" />
+  </ItemGroup>
 </Project>

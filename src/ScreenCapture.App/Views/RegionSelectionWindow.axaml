@@ -1,0 +1,43 @@
+<Window
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Class="ScreenCapture.App.Views.RegionSelectionWindow"
+    WindowDecorations="None"
+    Background="Black"
+    ShowInTaskbar="False"
+    CanResize="False"
+    Topmost="True"
+    ShowActivated="True"
+    Focusable="True">
+
+    <Grid>
+        <!-- Frozen desktop screenshot -->
+        <Image
+            x:Name="DesktopImage"
+            Stretch="Fill" />
+
+        <!-- Darkens the frozen desktop -->
+        <Canvas
+            x:Name="SelectionCanvas"
+            Background="#50000000"
+            PointerPressed="Canvas_PointerPressed"
+            PointerMoved="Canvas_PointerMoved"
+            PointerReleased="Canvas_PointerReleased">
+
+            <Border
+                x:Name="SelectionBorder"
+                IsVisible="False"
+                BorderBrush="White"
+                BorderThickness="2"
+                Background="#200080FF"/>
+
+            <TextBlock
+                x:Name="SizeText"
+                IsVisible="False"
+                Foreground="White"
+                Background="#CC000000"
+                Padding="6,3"/>
+        </Canvas>
+    </Grid>
+
+</Window>
