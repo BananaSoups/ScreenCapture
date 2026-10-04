@@ -2,6 +2,7 @@ using System;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Microsoft.Extensions.DependencyInjection;
 using ScreenCapture.App.Services;
 using ScreenCapture.App.ViewModels;
 using ScreenCapture.App.Views;
@@ -9,8 +10,6 @@ using ScreenCapture.Application.Capture;
 using ScreenCapture.Application.Storage;
 using ScreenCapture.Platform;
 using ScreenCapture.Platform.Linux;
-using Microsoft.Extensions.DependencyInjection;
-
 
 namespace ScreenCapture.App;
 
@@ -79,6 +78,10 @@ public partial class App : Avalonia.Application
                 provider.GetRequiredService<
                     AvaloniaRegionSelectionService>());
 
+        services.AddSingleton<
+            IClipboardService,
+            AvaloniaClipboardService>();
+
         var platformRegistrar =
             CreatePlatformServiceRegistrar();
 
@@ -100,7 +103,8 @@ public partial class App : Avalonia.Application
                 .GetRequiredService<RegionCaptureWorkflow>();
     }
 
-    private static IPlatformServiceRegistrar CreatePlatformServiceRegistrar()
+    private static IPlatformServiceRegistrar
+        CreatePlatformServiceRegistrar()
     {
         if (OperatingSystem.IsLinux())
         {
