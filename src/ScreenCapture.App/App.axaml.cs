@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -7,9 +8,12 @@ using ScreenCapture.App.Services;
 using ScreenCapture.App.ViewModels;
 using ScreenCapture.App.Views;
 using ScreenCapture.Application.Capture;
+using ScreenCapture.Application.Settings;
 using ScreenCapture.Application.Storage;
+using ScreenCapture.Application.UI;
 using ScreenCapture.Platform;
 using ScreenCapture.Platform.Linux;
+using Avalonia.Threading;
 
 namespace ScreenCapture.App;
 
@@ -18,16 +22,12 @@ public partial class App : Avalonia.Application
     private MainWindow? _mainWindow;
     private bool _isExiting;
 
-    private RegionCaptureWorkflow? _regionCaptureWorkflow;
-    private ScreenCaptureWorkflow? _screenCaptureWorkflow;
-
     private ServiceProvider? _serviceProvider;
 
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
     }
-
 
     public override async void OnFrameworkInitializationCompleted()
     {
@@ -51,12 +51,39 @@ public partial class App : Avalonia.Application
 
             BuildApplicationServices();
 
+            if (_serviceProvider is null)
+            {
+                throw new InvalidOperationException(
+                    "Application services have not been initialized.");
+            }
+
             var settingsService =
-                _serviceProvider!
-                    .GetRequiredService<
-                        ScreenCapture.Application.Settings.IApplicationSettingsService>();
+                _serviceProvider
+                    .GetRequiredService<IApplicationSettingsService>();
 
             await settingsService.LoadAsync();
+
+            var hotkeyService =
+                _serviceProvider
+                    .GetRequiredService<IGlobalHotkeyService>();
+
+            await hotkeyService.InitializeAsync();
+
+            await hotkeyService.RegisterAsync(
+                settingsService.Settings.Hotkeys.FullScreenCapture,
+                async () =>
+                {
+                    await Dispatcher.UIThread.InvokeAsync(
+                        CaptureScreenAsync);
+                });
+
+            await hotkeyService.RegisterAsync(
+                settingsService.Settings.Hotkeys.RegionCapture,
+                async () =>
+                {
+                    await Dispatcher.UIThread.InvokeAsync(
+                        CaptureRegionAsync);
+                });
 
             _mainWindow.Show();
         }
@@ -64,11 +91,53 @@ public partial class App : Avalonia.Application
         base.OnFrameworkInitializationCompleted();
     }
 
+    private async Task CaptureScreenAsync()
+    {
+        if (_serviceProvider is null)
+            return;
+
+        var workflow =
+            _serviceProvider
+                .GetRequiredService<ScreenCaptureWorkflow>();
+
+        try
+        {
+            await workflow.CaptureAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                $"Full screen capture failed: {ex}");
+        }
+    }
+
+    private async Task CaptureRegionAsync()
+    {
+        if (_serviceProvider is null)
+            return;
+
+        var workflow =
+            _serviceProvider
+                .GetRequiredService<RegionCaptureWorkflow>();
+
+        try
+        {
+            await workflow.CaptureAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                $"Region capture failed: {ex}");
+        }
+    }
+
     private void BuildApplicationServices()
     {
         if (_mainWindow is null)
+        {
             throw new InvalidOperationException(
                 "Main window has not been created.");
+        }
 
         var services =
             new ServiceCollection();
@@ -81,7 +150,7 @@ public partial class App : Avalonia.Application
             AvaloniaRegionSelectionService>();
 
         services.AddSingleton<
-            ScreenCapture.Application.UI.IRegionSelectionService>(
+            IRegionSelectionService>(
             provider =>
                 provider.GetRequiredService<
                     AvaloniaRegionSelectionService>());
@@ -91,8 +160,8 @@ public partial class App : Avalonia.Application
             AvaloniaClipboardService>();
 
         services.AddSingleton<
-            ScreenCapture.Application.Settings.IApplicationSettingsService,
-            ScreenCapture.Application.Settings.ApplicationSettingsService>();
+            IApplicationSettingsService,
+            ApplicationSettingsService>();
 
         var platformRegistrar =
             CreatePlatformServiceRegistrar();
@@ -105,14 +174,6 @@ public partial class App : Avalonia.Application
 
         _serviceProvider =
             services.BuildServiceProvider();
-
-        _screenCaptureWorkflow =
-            _serviceProvider
-                .GetRequiredService<ScreenCaptureWorkflow>();
-
-        _regionCaptureWorkflow =
-            _serviceProvider
-                .GetRequiredService<RegionCaptureWorkflow>();
     }
 
     private static IPlatformServiceRegistrar
@@ -146,41 +207,17 @@ public partial class App : Avalonia.Application
     }
 
     private async void CaptureRegion_Click(
-        object? sender,
-        EventArgs e)
+    object? sender,
+    EventArgs e)
     {
-        if (_regionCaptureWorkflow is null)
-            return;
-
-        try
-        {
-            await _regionCaptureWorkflow
-                .CaptureAsync();
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine(
-                $"Region capture failed: {ex}");
-        }
+        await CaptureRegionAsync();
     }
 
     private async void CaptureScreen_Click(
         object? sender,
         EventArgs e)
     {
-        if (_screenCaptureWorkflow is null)
-            return;
-
-        try
-        {
-            await _screenCaptureWorkflow
-                .CaptureAsync();
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine(
-                $"Full screen capture failed: {ex}");
-        }
+        await CaptureScreenAsync();
     }
 
     private void OpenScreenCapture_Click(
@@ -233,5 +270,4 @@ public partial class App : Avalonia.Application
             desktop.Shutdown();
         }
     }
-
 }

@@ -1,6 +1,6 @@
-
 using Microsoft.Extensions.DependencyInjection;
 using ScreenCapture.Platform;
+using ScreenCapture.Platform.Linux.X11;
 
 namespace ScreenCapture.Platform.Linux;
 
@@ -12,6 +12,10 @@ public sealed class LinuxPlatformServiceRegistrar
     {
         services.AddSingleton<IScreenCaptureService>(
             _ => new LinuxScreenCaptureService(
-                new X11.X11ScreenCaptureBackend()));
+                new X11ScreenCaptureBackend()));
+
+        services.AddSingleton<
+            IGlobalHotkeyService,
+            X11GlobalHotkeyService>();
     }
 }
